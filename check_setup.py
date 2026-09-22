@@ -59,12 +59,14 @@ def check_config():
     from app.config import (ANTHROPIC_API_KEY, APP_PASSWORD, CANVAS_BASE_URL,
                             CANVAS_TOKEN, DATA_DIR, NTFY_TOPIC, SECRET_KEY)
 
+    raw = os.environ.get("CANVAS_BASE_URL", "")
     if not CANVAS_BASE_URL:
         record(FAIL, "CANVAS_BASE_URL is set", "Set it to https://yourschool.instructure.com")
     elif not CANVAS_BASE_URL.startswith("https://"):
         record(FAIL, "CANVAS_BASE_URL uses https", f"Got {CANVAS_BASE_URL!r}")
-    elif CANVAS_BASE_URL.endswith("/"):
-        record(FAIL, "CANVAS_BASE_URL has no trailing slash", "Remove the final /")
+    elif raw.endswith("/"):
+        record(WARN, "CANVAS_BASE_URL has no trailing slash",
+               "The app strips it, so this still works. Tidier without it.")
     elif "/api" in CANVAS_BASE_URL:
         record(FAIL, "CANVAS_BASE_URL is the plain address",
                "Drop the /api/v1 part. The app adds it.")
