@@ -33,8 +33,12 @@
     </div>
 
     <div id="prompt-block">
-      <label for="prompt">What should the deck cover?</label>
-      <textarea id="prompt" name="prompt" placeholder="A 10 slide deck on the causes of the 1848 revolutions, for a first year history seminar. Cover economic pressure, nationalism, and why most of them failed."></textarea>
+      <p class="muted" style="margin:10px 0 0">
+        Opens a conversation with Claude about this assignment. Claude reads the
+        brief, the rubric, and any spec files the instructor attached. When the
+        work is done you send it to the review queue as an accessible Word
+        document or PowerPoint deck.
+      </p>
     </div>
   </div>
 
@@ -58,13 +62,14 @@ function sync() {
   document.getElementById('prompt-block').style.display = (ai && !src) ? '' : 'none';
   document.getElementById('file-block').style.display = needsFile ? '' : 'none';
   document.getElementById('upload_file').required = needsFile;
-  document.getElementById('prompt').required = ai && !src;
+
 
   document.getElementById('file-label').textContent = ai ? 'Source file' : 'Finished file to submit';
   document.getElementById('file-hint').textContent = ai
     ? 'PDF, DOCX, PPTX, TXT, MD, or CSV.'
     : 'Whatever the assignment asks for. This gets submitted as is.';
-  document.getElementById('go').textContent = ai ? 'Generate deck' : 'Queue for submit';
+  document.getElementById('go').textContent =
+    !ai ? 'Queue for submit' : (src ? 'Generate deck' : 'Open the chat');
 }
 sync();
 </script>

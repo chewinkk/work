@@ -176,3 +176,65 @@ async def get_assignment(course_id, assignment_id):
         )
         response.raise_for_status()
         return response.json()
+
+
+_FILE_LINK = re.compile(r"/files/(\d+)")
+
+
+async def get_file(file_id):
+    """Metadata for one Canvas file."""
+    async with httpx.AsyncClient(timeout=TIMEOUT, headers=_headers()) as client:
+        response = await client.get(_url(f"files/{file_id}"))
+        response.raise_for_status()
+        return response.json()
+
+
+async def download_file(file_id, destination):
+    """Fetch a Canvas file to disk. Returns its metadata, or None if gone."""
+    try:
+        meta = await get_file(file_id)
+    except httpx.HTTPStatusError:
+        return None   # deleted, or locked to the student
+    url = meta.get("url")
+    if not url:
+        return None
+    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        with open(destination, "wb") as handle:
+            handle.write(response.content)
+    return meta
+
+
+async def get_assignment_attachments(assignment, destination_dir, limit=5):
+    """Download the spec files linked from an assignment description.
+
+    Instructors routinely put the real requirements in an attached PDF or
+    Word document and leave the description itself nearly empty, so reading
+    only the description misses most of the assignment.
+
+    Returns [{"filename": ..., "path": ...}], skipping anything unreadable.
+    """
+    description = assignment.get("description") or ""
+    file_ids = list(dict.fromkeys(_FILE_LINK.findall(description)))[:limit]
+    if not file_ids:
+        return []
+
+    os.makedirs(destination_dir, exist_ok=True)
+    attachments = []
+    for file_id in file_ids:
+        target = os.path.join(destination_dir, f"spec_{file_id}")
+        try:
+            meta = await download_file(file_id, target)
+        except Exception:
+            continue
+        if not meta:
+            continue
+        name = meta.get("display_name") or meta.get("filename") or f"file_{file_id}"
+        final = os.path.join(destination_dir, f"{file_id}_{name}")
+        try:
+            os.replace(target, final)
+        except OSError:
+            final = target
+        attachments.append({"filename": name, "path": final})
+    return attachments

@@ -25,6 +25,8 @@ TIMEZONE = os.environ.get("TIMEZONE", "America/New_York")
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+# Specification files downloaded from Canvas, cached per assignment.
+SPEC_DIR = os.path.join(DATA_DIR, "specs")
 DB_PATH = os.path.join(DATA_DIR, "canvas.db")
 
 # Stop retrying a submission after this many consecutive Canvas failures so a

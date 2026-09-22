@@ -94,6 +94,15 @@
   ul.log li:first-child { border-top: 0; }
   ul.log .err { color: var(--bad); }
   code { font-size: 13px; word-break: break-all; }
+  .msg { margin-bottom: 12px; }
+  .msg .who { font-size: 12px; font-weight: 700; color: var(--muted);
+              text-transform: uppercase; letter-spacing: .04em; }
+  .msg .body {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin-top: 4px; white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .msg.user .body { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -101,6 +110,7 @@
 <header><nav>
   <a href="/" class="{{ 'on' if active == 'home' }}">Dashboard</a>
   <a href="/upload" class="{{ 'on' if active == 'upload' }}">Upload</a>
+  <a href="/chat" class="{{ 'on' if active == 'chat' }}">Ask</a>
   <a href="/review" class="{{ 'on' if active == 'review' }}">Review</a>
   <span class="spacer"></span>
   <form method="post" action="/logout"><button class="ghost small">Log out</button></form>

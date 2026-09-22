@@ -33,7 +33,8 @@
     {% for a in assignments %}
       <div class="row">
         <span class="name">
-          {{ a.name }}<br>
+          <a href="/chat/{{ course.id }}/{{ a.id }}"
+             style="color:inherit;text-decoration:none">{{ a.name }}</a><br>
           <span class="muted">Due {{ a.due_at | due }}</span>
         </span>
         {% set status = status_of(a) %}

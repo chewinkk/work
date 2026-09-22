@@ -168,14 +168,33 @@ Pick one of two modes at the top.
 
 Manual. For work you already finished. Pick the assignment, choose your file, submit. It goes into the queue and uploads to Canvas within 30 minutes. Nothing reviews it. Use this when the work is done.
 
-AI Approved. For slide decks. Pick the assignment, then pick how to build it:
+AI Approved. Pick the assignment, then pick how to work:
 
-- "I have source material" takes a PDF, Word document, PowerPoint, or text file, and turns it into slides.
-- "Just a prompt" takes a written description. Say what the deck should cover, how long, and for which class.
+- "I have source material" takes a PDF, Word document, PowerPoint, or text file and turns it straight into a slide deck. One shot, no conversation.
+- "Just a prompt" opens a conversation with Claude about that assignment. See below.
 
-Either way the app builds a .pptx and holds it. Nothing reaches Canvas until you approve it.
+Either way the app holds the result. Nothing reaches Canvas until you approve it.
+
+### Ask page
+
+This is the conversation. Pick an assignment and Claude starts already knowing:
+
+- The assignment brief, converted from Canvas HTML to plain text.
+- The full grading rubric, every criterion and every rating band with its points.
+- Any specification files the instructor attached to the description. Instructors often leave the brief nearly empty and put the real requirements in an attached PDF, so the app downloads those and reads them too.
+
+Talk to it like you would in any chat. Ask what a rubric criterion is actually asking for, have it draft a section, or paste your own writing and ask where it loses points. The conversation is saved per assignment, so you can close the page and pick it up later.
+
+When the work is ready, "Build it and send for review" turns the conversation into a file and puts it in the Review queue. Format is chosen for you from the assignment, and you can override it:
+
+- Presentations become an accessible PowerPoint. Every slide has a real title, body text sits in proper placeholders so reading order works, and speaker notes are kept.
+- Everything else becomes an accessible Word document. Real heading styles, real list styles, and the document language set.
+
+Accessible here means a screen reader can navigate it. Text that is merely bold and large looks like a heading but carries no structure, so nothing in these files fakes formatting that way.
 
 Generating takes up to a minute. Stay on the page.
+
+You can also reach the chat for any assignment by tapping its name on the dashboard.
 
 ### Review page
 
@@ -241,7 +260,10 @@ If you think a secret leaked: delete the Canvas token in Canvas settings, roll y
 | `app/scheduler.py` | The background check that runs every `POLL_MINUTES` |
 | `app/canvas.py` | Talks to Canvas, including the three step file submission |
 | `app/db.py` | SQLite storage on the volume |
-| `app/ai_generate.py` | Builds the .pptx with Claude |
+| `app/ai_generate.py` | Builds a deck from a source document |
+| `app/assistant.py` | The per-assignment chat, and turning it into a file |
+| `app/render.py` | Writes the accessible .docx and .pptx files |
+| `app/extract.py` | Reads text out of PDF, Word, PowerPoint, and Canvas HTML |
 | `app/notify.py` | Sends the pushes to ntfy |
 | `Procfile` | Tells Railway how to start the app |
 

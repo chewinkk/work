@@ -16,17 +16,20 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from app import ai_generate, canvas, db, scheduler
+from app import ai_generate, assistant, canvas, db, render, scheduler
 from app.config import (
     APP_PASSWORD, POLL_MINUTES, SECRET_KEY, SESSION_COOKIE, SESSION_MAX_AGE,
-    UPLOAD_DIR, missing_required,
+    SPEC_DIR, UPLOAD_DIR, missing_required,
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TEMPLATES = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
-PPTX_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+def _media_type(path):
+    """Serve the right type so the file opens instead of downloading as junk."""
+    suffix = os.path.splitext(path)[1].lstrip(".").lower()
+    return render.MEDIA_TYPES.get(suffix, "application/octet-stream")
 
 # Templates render due dates through the same formatter the notifications use.
 TEMPLATES.env.filters["due"] = scheduler._format_due
@@ -302,10 +305,9 @@ async def upload_submit(
                     except OSError:
                         pass
             else:
-                if not prompt.strip():
-                    raise ValueError("Write a prompt, or switch to I have source material.")
-                await ai_generate.generate_presentation_from_prompt(
-                    prompt, assignment_name, deck_path
+                # "Just a prompt" is a conversation, not a one-shot generate.
+                return RedirectResponse(
+                    f"/chat/{course_id}/{assignment_id}", status_code=303
                 )
 
             db.add_pending_upload(
@@ -349,10 +351,11 @@ async def review_file(upload_id: int, _=Depends(require_login)):
     row = db.get_upload(upload_id)
     if row is None or not os.path.exists(row["file_path"]):
         raise HTTPException(status_code=404, detail="That file is gone.")
+    suffix = os.path.splitext(row["file_path"])[1] or ".bin"
     return FileResponse(
         row["file_path"],
-        media_type=PPTX_TYPE,
-        filename=f"{_safe_name(row['assignment_name'])}.pptx",
+        media_type=_media_type(row["file_path"]),
+        filename=f"{_safe_name(row['assignment_name'])}{suffix}",
     )
 
 
@@ -372,6 +375,158 @@ async def review_reject(upload_id: int, _=Depends(require_login)):
         raise HTTPException(status_code=404, detail="No such upload.")
     db.log("rejected", f"{row['assignment_name']} deck deleted")
     return RedirectResponse("/review", status_code=303)
+
+
+# --- assignment chat -------------------------------------------------------
+
+async def _assignment_specs(assignment):
+    """Spec files attached to the assignment, downloaded once and cached.
+
+    Instructors often leave the description nearly empty and put the real
+    requirements in an attached PDF, so these matter as much as the brief.
+    """
+    folder = os.path.join(SPEC_DIR, str(assignment.get("id")))
+    if os.path.isdir(folder):
+        return [
+            {"filename": name.split("_", 1)[-1], "path": os.path.join(folder, name)}
+            for name in sorted(os.listdir(folder))
+        ]
+    try:
+        return await canvas.get_assignment_attachments(assignment, folder)
+    except Exception as exc:
+        logger.warning("spec download failed for %s: %s", assignment.get("name"), exc)
+        return []
+
+
+async def _chat_context(course_id, assignment_id):
+    """(course, assignment, specs, context) for one assignment."""
+    assignment = await canvas.get_assignment(course_id, assignment_id)
+    try:
+        course = await canvas.get_course(course_id)
+        course["display_name"] = canvas.display_name(course)
+    except Exception:
+        course = {"id": course_id, "name": "", "display_name": ""}
+    specs = await _assignment_specs(assignment)
+    context = assistant.build_context(
+        course, assignment, specs, due_text=scheduler._format_due(assignment.get("due_at"))
+    )
+    return course, assignment, specs, context
+
+
+def _chat_page(request, course, assignment, specs, course_id, assignment_id,
+               error=None, message=None, status=200):
+    return TEMPLATES.TemplateResponse(request, "chat.html", {
+        "course": course,
+        "assignment": assignment,
+        "specs": specs,
+        "course_id": course_id,
+        "assignment_id": assignment_id,
+        "messages": db.get_chat_history(assignment_id),
+        "default_format": assistant.default_format(assignment),
+        "error": error,
+        "message": message,
+        "poll_minutes": POLL_MINUTES,
+    }, status_code=status)
+
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_index(request: Request, _=Depends(require_login)):
+    """Pick an assignment to talk about."""
+    error = None
+    options = []
+    try:
+        queued = db.get_queued_assignment_ids()
+        for course, assignments in await _load_courses():
+            for a in assignments:
+                options.append({
+                    "value": f"{course['id']}|{a['id']}",
+                    "course_name": course.get("display_name") or course.get("name", ""),
+                    "name": a.get("name") or "Untitled",
+                    "due_at": a.get("due_at"),
+                    "queued": str(a["id"]) in queued,
+                })
+    except Exception as exc:
+        error = f"Could not load assignments: {exc}"
+    threads = {t["assignment_id"]: t for t in db.get_active_chats()}
+    return TEMPLATES.TemplateResponse(request, "chat_index.html", {
+        "options": options, "threads": threads, "error": error,
+    })
+
+
+@app.get("/chat/{course_id}/{assignment_id}", response_class=HTMLResponse)
+async def chat_thread(request: Request, course_id: str, assignment_id: str,
+                      _=Depends(require_login)):
+    try:
+        course, assignment, specs, _context = await _chat_context(course_id, assignment_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Could not load that assignment: {exc}")
+    return _chat_page(request, course, assignment, specs, course_id, assignment_id)
+
+
+@app.post("/chat/{course_id}/{assignment_id}", response_class=HTMLResponse)
+async def chat_send(request: Request, course_id: str, assignment_id: str,
+                    _=Depends(require_login), message: str = Form("")):
+    error = None
+    course = assignment = None
+    specs = []
+    try:
+        course, assignment, specs, context = await _chat_context(course_id, assignment_id)
+        history = db.get_chat_history(assignment_id)
+        answer = await assistant.reply(context, history, message)
+        db.add_chat_message(course_id, assignment_id, "user", message.strip())
+        db.add_chat_message(course_id, assignment_id, "assistant", answer)
+    except Exception as exc:
+        error = str(exc)
+        db.log("chat_failed", error, level="error")
+        if assignment is None:
+            raise HTTPException(status_code=404, detail=error)
+    return _chat_page(request, course, assignment, specs, course_id, assignment_id,
+                      error=error, status=400 if error else 200)
+
+
+@app.post("/chat/{course_id}/{assignment_id}/save", response_class=HTMLResponse)
+async def chat_save(request: Request, course_id: str, assignment_id: str,
+                    _=Depends(require_login), kind: str = Form("auto"),
+                    instruction: str = Form("")):
+    """Render the thread into an accessible file and send it for review."""
+    error = None
+    message = None
+    course = assignment = None
+    specs = []
+    try:
+        course, assignment, specs, context = await _chat_context(course_id, assignment_id)
+        chosen = assistant.default_format(assignment) if kind == "auto" else kind
+        if chosen not in render.RENDERERS:
+            raise ValueError("Pick Word or PowerPoint.")
+
+        assignment_name = assignment.get("name") or "Assignment"
+        path, filename = await assistant.build_artifact(
+            context, db.get_chat_history(assignment_id), chosen,
+            assignment_name, UPLOAD_DIR, instruction,
+        )
+        db.add_pending_upload(
+            course_id, assignment_id, assignment_name, path, filename,
+            course_name=course.get("display_name") or course.get("name", ""),
+            ai_generated=True, hold_for_review=True,
+        )
+        db.log("generated", f"{assignment_name}: {filename} awaiting review")
+        label = "PowerPoint deck" if chosen == "pptx" else "Word document"
+        message = (f"Built the {label}. Nothing is submitted yet. "
+                   "Open Review to check it and approve.")
+    except Exception as exc:
+        error = str(exc)
+        db.log("chat_save_failed", error, level="error")
+        if assignment is None:
+            raise HTTPException(status_code=404, detail=error)
+    return _chat_page(request, course, assignment, specs, course_id, assignment_id,
+                      error=error, message=message, status=400 if error else 200)
+
+
+@app.post("/chat/{course_id}/{assignment_id}/clear")
+async def chat_clear(course_id: str, assignment_id: str, _=Depends(require_login)):
+    removed = db.clear_chat(assignment_id)
+    db.log("chat_cleared", f"assignment {assignment_id}: {removed} messages")
+    return RedirectResponse(f"/chat/{course_id}/{assignment_id}", status_code=303)
 
 
 @app.get("/healthz")

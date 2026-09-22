@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% set active = 'chat' %}
+{% block title %}{{ assignment.name }}{% endblock %}
+{% block body %}
+
+<h1>{{ assignment.name }}</h1>
+<p class="sub">
+  {{ course.display_name or course.name }}
+  · Due {{ assignment.due_at | due }}
+  {% if assignment.points_possible is not none %} · {{ assignment.points_possible }} points{% endif %}
+</p>
+
+<div class="card">
+  <strong style="font-size:14px">Claude has read</strong>
+  <div class="row"><span class="name">The assignment brief</span>
+    <span class="pill {{ 'good' if assignment.description }}">{{ 'yes' if assignment.description else 'blank' }}</span></div>
+  <div class="row"><span class="name">The grading rubric</span>
+    <span class="pill {{ 'good' if assignment.rubric }}">{{ assignment.rubric | length if assignment.rubric else 'none' }}{{ ' criteria' if assignment.rubric }}</span></div>
+  <div class="row"><span class="name">Attached specification files</span>
+    <span class="pill {{ 'good' if specs }}">{{ specs | length }}</span></div>
+  {% if specs %}
+    <p class="muted" style="margin:8px 0 0">
+      {% for s in specs %}{{ s.filename }}{{ ", " if not loop.last }}{% endfor %}
+    </p>
+  {% endif %}
+</div>
+
+{% if message %}<div class="banner ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="banner err">{{ error }}</div>{% endif %}
+
+{% for m in messages %}
+  <div class="msg {{ m.role }}">
+    <span class="who">{{ 'You' if m.role == 'user' else 'Claude' }}</span>
+    <div class="body">{{ m.content }}</div>
+  </div>
+{% else %}
+  <div class="card">
+    <p class="muted" style="margin:0">
+      Nothing yet. Ask what the rubric is really asking for, have Claude draft a
+      section, or paste what you have written and ask where it loses points.
+    </p>
+  </div>
+{% endfor %}
+
+<form method="post" action="/chat/{{ course_id }}/{{ assignment_id }}" class="card">
+  <label for="message">Your message</label>
+  <textarea id="message" name="message" required autofocus
+            placeholder="Draft the executive summary. Keep it under 200 words and hit the two rubric criteria about measurable outcomes."></textarea>
+  <button type="submit">Send</button>
+  <p class="muted" style="margin-top:10px">Claude can take up to a minute. Stay on this page.</p>
+</form>
+
+{% if messages %}
+<h2>Send it for review</h2>
+<form method="post" action="/chat/{{ course_id }}/{{ assignment_id }}/save" class="card">
+  <p class="muted" style="margin:0 0 4px">
+    Turns this conversation into an accessible file and puts it in the Review
+    queue. Nothing submits until you approve it there.
+  </p>
+  <label for="kind">Format</label>
+  <select id="kind" name="kind">
+    <option value="auto" selected>Auto ({{ 'PowerPoint' if default_format == 'pptx' else 'Word' }}, from the assignment)</option>
+    <option value="docx">Word document (.docx)</option>
+    <option value="pptx">PowerPoint deck (.pptx)</option>
+  </select>
+  <label for="instruction">Anything to change first (optional)</label>
+  <input type="text" id="instruction" name="instruction"
+         placeholder="Use the second draft, drop the conclusion">
+  <button type="submit">Build it and send for review</button>
+</form>
+
+<form method="post" action="/chat/{{ course_id }}/{{ assignment_id }}/clear"
+      onsubmit="return confirm('Delete this whole conversation? This cannot be undone.')">
+  <button class="ghost">Clear this conversation</button>
+</form>
+{% endif %}
+{% endblock %}

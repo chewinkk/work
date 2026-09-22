@@ -168,11 +168,13 @@ async def _job():
     try:
         await poll_once()
     except asyncio.CancelledError:
-        # The container is shutting down mid-poll. Not an error, and not
-        # something to swallow, but it should not print a scary traceback
-        # into the Railway logs next to the real failures.
+        # The container is shutting down mid-poll. This function IS the task
+        # boundary APScheduler runs, so returning here ends the coroutine
+        # cleanly and nothing further awaits it. Re-raising instead would make
+        # APScheduler log a full traceback on every redeploy, burying the real
+        # errors a reader is actually scanning for.
         logger.info("poll cancelled during shutdown")
-        raise
+        return
     except Exception as exc:  # last resort, keeps the job scheduled
         logger.exception("poll failed")
         db.log("error", f"poll crashed: {exc}", level="error")

@@ -54,6 +54,17 @@ CREATE TABLE IF NOT EXISTS activity_log (
     detail TEXT
 );
 
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id     TEXT NOT NULL,
+    assignment_id TEXT NOT NULL,
+    role          TEXT NOT NULL,
+    content       TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_thread
+    ON chat_messages (assignment_id, id);
 CREATE INDEX IF NOT EXISTS idx_uploads_queue
     ON pending_uploads (submitted, hold_for_review, attempts);
 CREATE INDEX IF NOT EXISTS idx_log_ts ON activity_log (ts DESC);
@@ -258,3 +269,57 @@ def mark_reviewed(upload_id, approved):
     except OSError:
         pass
     return row
+
+
+# --- assignment chat -------------------------------------------------------
+
+def add_chat_message(course_id, assignment_id, role, content):
+    """Append one turn. role is 'user' or 'assistant'."""
+    with _tx() as conn:
+        cur = conn.execute(
+            "INSERT INTO chat_messages"
+            " (course_id, assignment_id, role, content, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (str(course_id), str(assignment_id), role, content, _now()),
+        )
+        return cur.lastrowid
+
+
+def get_chat_history(assignment_id, limit=80):
+    """The thread for one assignment, oldest first."""
+    with _tx() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chat_messages WHERE assignment_id = ?"
+            " ORDER BY id DESC LIMIT ?",
+            (str(assignment_id), limit),
+        ).fetchall()
+    return [dict(row) for row in reversed(rows)]
+
+
+def get_chat_message(message_id):
+    with _tx() as conn:
+        row = conn.execute(
+            "SELECT * FROM chat_messages WHERE id = ?", (message_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def clear_chat(assignment_id):
+    with _tx() as conn:
+        cur = conn.execute(
+            "DELETE FROM chat_messages WHERE assignment_id = ?",
+            (str(assignment_id),),
+        )
+        return cur.rowcount
+
+
+def get_active_chats():
+    """Assignments with a thread, newest activity first, for the nav badge."""
+    with _tx() as conn:
+        rows = conn.execute(
+            "SELECT assignment_id, course_id, COUNT(*) AS messages,"
+            "       MAX(created_at) AS last_at"
+            " FROM chat_messages GROUP BY assignment_id, course_id"
+            " ORDER BY last_at DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]

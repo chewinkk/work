@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% set active = 'chat' %}
+{% block title %}Ask Claude{% endblock %}
+{% block body %}
+<h1>Ask Claude</h1>
+<p class="sub">Pick an assignment. Claude reads the brief, the rubric, and any attached spec files before you say a word.</p>
+
+{% if error %}<div class="banner err">{{ error }}</div>{% endif %}
+
+{% for o in options %}
+  {% if loop.first or o.course_name != options[loop.index0 - 1].course_name %}
+    <h2>{{ o.course_name }}</h2>
+  {% endif %}
+  <a href="/chat/{{ o.value.replace('|', '/') }}" style="text-decoration:none;color:inherit">
+    <div class="card" style="margin-bottom:8px">
+      <div class="row">
+        <span class="name">
+          {{ o.name }}<br>
+          <span class="muted">Due {{ o.due_at | due }}</span>
+        </span>
+        {% set thread = threads.get(o.value.split('|')[1]) %}
+        {% if thread %}
+          <span class="pill good">{{ thread.messages }} messages</span>
+        {% else %}
+          <span class="pill">Start</span>
+        {% endif %}
+      </div>
+    </div>
+  </a>
+{% else %}
+  {% if not error %}<div class="card"><p class="muted" style="margin:0">No assignments came back from Canvas.</p></div>{% endif %}
+{% endfor %}
+{% endblock %}
