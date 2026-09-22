@@ -28,7 +28,7 @@
 </div>
 
 {% for course, assignments in courses %}
-  <h2>{{ course.name }}</h2>
+  <h2>{{ course.display_name or course.name }}</h2>
   <div class="card">
     {% for a in assignments %}
       <div class="row">

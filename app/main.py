@@ -170,7 +170,7 @@ async def _open_assignments():
                 continue
             options.append({
                 "value": f"{course['id']}|{assignment['id']}",
-                "course_name": course.get("name", "Course"),
+                "course_name": course.get("display_name") or course.get("name", "Course"),
                 "name": assignment.get("name") or "Untitled",
                 "due_at": assignment.get("due_at"),
             })

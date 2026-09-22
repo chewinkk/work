@@ -45,6 +45,21 @@ async def _get_paginated(path, params=None):
     return items
 
 
+def display_name(course):
+    """Strip the term and section code schools bolt onto course names.
+
+    "2026FA-BMK-2510-LD01 Introduction to Marketing" -> "Introduction to Marketing"
+
+    Only strips when the leading token really looks like a course code, so a
+    plain name such as "Introduction to Marketing" is left alone.
+    """
+    name = (course.get("name") or "").strip()
+    head, separator, tail = name.partition(" ")
+    if separator and tail.strip() and head.count("-") >= 2 and any(c.isdigit() for c in head):
+        return tail.strip()
+    return name
+
+
 async def list_active_courses():
     """Courses with an active enrollment for the token owner."""
     courses = await _get_paginated(
@@ -52,7 +67,10 @@ async def list_active_courses():
         {"enrollment_state": "active", "state[]": "available"},
     )
     # Canvas returns restricted courses as stubs with no name. Drop those.
-    return [c for c in courses if c.get("name")]
+    courses = [c for c in courses if c.get("name")]
+    for course in courses:
+        course["display_name"] = display_name(course)
+    return courses
 
 
 async def list_assignments(course_id):

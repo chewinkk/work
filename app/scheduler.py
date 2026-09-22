@@ -3,6 +3,7 @@
 Every Canvas call sits in its own try/except. One broken course, one deleted
 assignment, or one rejected upload must never stop the rest of the sweep.
 """
+import asyncio
 import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -47,7 +48,7 @@ def _format_due(due_at):
 
 async def _check_assignment(course, assignment, announce):
     """Notify on a first sighting and on a new grade. Never raises."""
-    course_name = course.get("name", "Course")
+    course_name = course.get("display_name") or course.get("name", "Course")
     assignment_id = assignment.get("id")
     name = assignment.get("name") or "Untitled assignment"
 
@@ -166,6 +167,12 @@ async def poll_once():
 async def _job():
     try:
         await poll_once()
+    except asyncio.CancelledError:
+        # The container is shutting down mid-poll. Not an error, and not
+        # something to swallow, but it should not print a scary traceback
+        # into the Railway logs next to the real failures.
+        logger.info("poll cancelled during shutdown")
+        raise
     except Exception as exc:  # last resort, keeps the job scheduled
         logger.exception("poll failed")
         db.log("error", f"poll crashed: {exc}", level="error")
