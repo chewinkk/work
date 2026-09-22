@@ -5,6 +5,7 @@ One user, one password, a signed cookie. No user table.
 import asyncio
 import hmac
 import logging
+import secrets
 import os
 import re
 import uuid
@@ -18,7 +19,8 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from app import ai_generate, assistant, canvas, db, render, scheduler
 from app.config import (
-    APP_PASSWORD, POLL_MINUTES, SECRET_KEY, SESSION_COOKIE, SESSION_MAX_AGE,
+    APP_PASSWORD, COOKIE_SECURE, POLL_MINUTES, SECRET_KEY, SESSION_COOKIE,
+    SESSION_MAX_AGE,
     SPEC_DIR, UPLOAD_DIR, missing_required,
 )
 
@@ -34,9 +36,14 @@ def _media_type(path):
 # Templates render due dates through the same formatter the notifications use.
 TEMPLATES.env.filters["due"] = scheduler._format_due
 
-# SECRET_KEY is validated on the dashboard; fall back so /login can still render
-# and tell you what is missing instead of crashing the container on boot.
-_serializer = URLSafeTimedSerializer(SECRET_KEY or "unconfigured", salt="canvas-login")
+# A literal fallback key here would be a full authentication bypass: this repo
+# is public, so anyone could sign their own session cookie and reach every route
+# without the password. Fail safe instead. An unset SECRET_KEY gets a random key
+# per boot, which nobody can forge; the only cost is that logins do not survive
+# a restart, and the login page says so.
+_serializer = URLSafeTimedSerializer(
+    SECRET_KEY or secrets.token_urlsafe(32), salt="canvas-login"
+)
 
 
 @asynccontextmanager
@@ -53,7 +60,13 @@ async def lifespan(app):
     scheduler.shutdown_scheduler()
 
 
-app = FastAPI(title="Canvas Assistant", lifespan=lifespan)
+# The interactive docs and the OpenAPI schema carry no auth dependency and
+# cannot be given one, so on a public host they hand an anonymous visitor the
+# whole route and form-field inventory. Nothing here needs them.
+app = FastAPI(
+    title="Canvas Assistant", lifespan=lifespan,
+    docs_url=None, redoc_url=None, openapi_url=None,
+)
 
 
 # --- auth ------------------------------------------------------------------
@@ -88,13 +101,27 @@ async def _redirect_unauthenticated(request: Request, exc: HTTPException):
     )
 
 
+def _login_context():
+    """What the unauthenticated login page may safely say about configuration.
+
+    Naming every unset secret here would tell an anonymous visitor which
+    weakness to attempt. Only APP_PASSWORD is named, because without it nobody
+    can log in to read the full list on the dashboard.
+    """
+    missing = missing_required()
+    return {
+        "error": None,
+        "no_password": "APP_PASSWORD" in missing,
+        "unconfigured": bool(missing),
+        "ephemeral_sessions": not SECRET_KEY,
+    }
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):
     if _is_logged_in(request):
         return RedirectResponse("/", status_code=303)
-    return TEMPLATES.TemplateResponse(
-        request, "login.html", {"error": None, "missing": missing_required()}
-    )
+    return TEMPLATES.TemplateResponse(request, "login.html", _login_context())
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -103,7 +130,7 @@ async def login_submit(request: Request, password: str = Form(...)):
         db.log("login_failed", "wrong password", level="error")
         return TEMPLATES.TemplateResponse(
             request, "login.html",
-            {"error": "Wrong password.", "missing": missing_required()},
+            dict(_login_context(), error="Wrong password."),
             status_code=401,
         )
     response = RedirectResponse("/", status_code=303)
@@ -113,7 +140,7 @@ async def login_submit(request: Request, password: str = Form(...)):
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=request.url.scheme == "https",
+        secure=COOKIE_SECURE,
     )
     return response
 

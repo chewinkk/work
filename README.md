@@ -102,6 +102,7 @@ These are your settings and secrets. Railway keeps them out of your code.
 | `DATA_DIR` | `/data` |
 | `POLL_MINUTES` | `30` |
 | `TIMEZONE` | Your timezone, like `America/New_York`. Canvas sends due dates in UTC, so without this an 11:59 PM deadline shows as 3:59 AM the next day. |
+| `COOKIE_SECURE` | `true`. Sends your login cookie only over HTTPS. Set it to `false` only when running locally over plain http. |
 
 `.env.example` in this repository lists the same variables with notes. Two optional ones:
 
@@ -276,6 +277,7 @@ pip install -r requirements.txt
 cp .env.example .env          # then fill in .env
 export $(grep -v '^#' .env | xargs)
 export DATA_DIR=./data
+export COOKIE_SECURE=false      # only for plain http on localhost
 uvicorn app.main:app --reload --port 8000
 ```
 

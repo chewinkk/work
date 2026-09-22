@@ -5,6 +5,7 @@ assignment, or one rejected upload must never stop the rest of the sweep.
 """
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -17,6 +18,8 @@ from app.notify import notify
 logger = logging.getLogger(__name__)
 
 _scheduler = None
+
+_REDACT_QUERY = re.compile(r"\?[^\s'\"]+")
 
 try:
     LOCAL_TZ = ZoneInfo(TIMEZONE)
@@ -133,12 +136,17 @@ async def _drain_queue():
         except Exception as exc:
             detail = str(exc)
             db.mark_submitted(row["id"], False, detail)
+            # A failure in step two of the upload embeds Canvas's signed
+            # storage URL, query token and all. The dashboard is behind the
+            # password, but an ntfy topic is protected only by being hard to
+            # guess, so the pushed copy drops the query string.
+            pushable = _REDACT_QUERY.sub("?[redacted]", detail)
             attempts = row["attempts"] + 1
             db.log("submit_failed", f"{name}: {detail}", level="error")
             if attempts >= MAX_SUBMIT_ATTEMPTS:
-                message = f"Submit FAILED for {name} after {attempts} tries. {detail}"
+                message = f"Submit FAILED for {name} after {attempts} tries. {pushable}"
             else:
-                message = f"Submit failed for {name} (try {attempts} of {MAX_SUBMIT_ATTEMPTS}). {detail}"
+                message = f"Submit failed for {name} (try {attempts} of {MAX_SUBMIT_ATTEMPTS}). {pushable}"
             await notify("Canvas submit failed", message, priority="urgent", tags=["rotating_light"])
             continue
 

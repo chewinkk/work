@@ -36,6 +36,14 @@ MAX_SUBMIT_ATTEMPTS = int(os.environ.get("MAX_SUBMIT_ATTEMPTS", "3"))
 SESSION_COOKIE = "canvas_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
+# Railway terminates TLS at its edge, so the app itself sees plain HTTP unless
+# uvicorn is told to trust the proxy. Deciding the Secure flag from the observed
+# scheme therefore got it wrong in production. Default it on, and let local
+# HTTP development opt out explicitly.
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+
 
 def missing_required():
     """Names of env vars the app needs before anything works."""

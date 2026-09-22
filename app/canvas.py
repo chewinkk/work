@@ -179,6 +179,17 @@ async def get_assignment(course_id, assignment_id):
 
 
 _FILE_LINK = re.compile(r"/files/(\d+)")
+_UNSAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_filename(name):
+    """Reduce a Canvas display_name to something safe to join onto a path.
+
+    basename() alone is not enough: the value is joined after a numeric
+    prefix, so a leading '../' would still climb out of the folder.
+    """
+    cleaned = _UNSAFE_NAME.sub("_", os.path.basename(name or ""))
+    return cleaned.strip("._")
 
 
 async def get_file(file_id):
@@ -230,8 +241,16 @@ async def get_assignment_attachments(assignment, destination_dir, limit=5):
             continue
         if not meta:
             continue
-        name = meta.get("display_name") or meta.get("filename") or f"file_{file_id}"
+        raw_name = meta.get("display_name") or meta.get("filename") or ""
+        name = _safe_filename(raw_name) or f"file_{file_id}"
         final = os.path.join(destination_dir, f"{file_id}_{name}")
+
+        # The name came from whoever uploaded the file to Canvas. Even after
+        # sanitising, confirm the path still lands inside the target folder
+        # before writing, so a traversal can never clobber a file elsewhere.
+        root = os.path.realpath(destination_dir)
+        if not os.path.realpath(final).startswith(root + os.sep):
+            continue
         try:
             os.replace(target, final)
         except OSError:

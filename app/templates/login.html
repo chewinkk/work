@@ -5,10 +5,21 @@
 <h1>Canvas Assistant</h1>
 <p class="sub">Enter the password you set as APP_PASSWORD.</p>
 
-{% if missing %}
+{% if no_password %}
 <div class="banner warn">
-  Not configured yet. Set these on Railway, then redeploy:
-  <code>{{ missing | join(', ') }}</code>
+  <code>APP_PASSWORD</code> is not set on Railway, so nobody can log in.
+  Set it, then redeploy.
+</div>
+{% elif unconfigured %}
+<div class="banner warn">
+  Some settings are still missing. Log in and the dashboard lists them.
+</div>
+{% endif %}
+
+{% if ephemeral_sessions %}
+<div class="banner warn">
+  <code>SECRET_KEY</code> is not set, so a new one is generated each time the
+  app restarts. Logging in still works, but every restart signs you out.
 </div>
 {% endif %}
 
