@@ -4,8 +4,9 @@ Publishes as JSON to the server root rather than with HTTP headers, so titles
 containing non-latin-1 characters (an assignment name with a dash or an accent)
 do not blow up header encoding.
 
-Never raises. A dead notification service must not stop the scheduler from
-submitting work.
+Swallows every ordinary failure. A dead notification service must not stop the
+scheduler from submitting work. Cancellation still propagates, as it should, so
+container shutdown is never delayed.
 """
 import logging
 
