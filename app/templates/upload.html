@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% set active = 'upload' %}
+{% block title %}Upload{% endblock %}
+{% block body %}
+<h1>Upload</h1>
+<p class="sub">Manual goes straight to the submit queue. AI Approved waits for you to check it.</p>
+
+{% if message %}<div class="banner ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="banner err">{{ error }}</div>{% endif %}
+
+<form method="post" action="/upload" enctype="multipart/form-data" class="card">
+
+  <div class="toggle">
+    <label><input type="radio" name="mode" value="ai" checked onchange="sync()"><span>AI Approved</span></label>
+    <label><input type="radio" name="mode" value="manual" onchange="sync()"><span>Manual</span></label>
+  </div>
+
+  <label for="assignment">Assignment</label>
+  <select id="assignment" name="assignment" required>
+    <option value="" disabled selected>Pick an assignment</option>
+    {% for o in options %}
+      <option value="{{ o.value }}">{{ o.course_name }} &middot; {{ o.name }} (due {{ o.due_at | due }})</option>
+    {% endfor %}
+  </select>
+  {% if not options %}
+    <p class="muted">Nothing to submit to right now. Everything open is either already queued or not an upload assignment.</p>
+  {% endif %}
+
+  <div id="ai-block">
+    <div class="toggle" style="margin-top:14px">
+      <label><input type="radio" name="ai_source" value="source" onchange="sync()"><span>I have source material</span></label>
+      <label><input type="radio" name="ai_source" value="prompt" checked onchange="sync()"><span>Just a prompt</span></label>
+    </div>
+
+    <div id="prompt-block">
+      <label for="prompt">What should the deck cover?</label>
+      <textarea id="prompt" name="prompt" placeholder="A 10 slide deck on the causes of the 1848 revolutions, for a first year history seminar. Cover economic pressure, nationalism, and why most of them failed."></textarea>
+    </div>
+  </div>
+
+  <div id="file-block">
+    <label for="upload_file"><span id="file-label">Source file</span></label>
+    <input type="file" id="upload_file" name="upload_file">
+    <p class="muted" id="file-hint">PDF, DOCX, PPTX, TXT, MD, or CSV.</p>
+  </div>
+
+  <button type="submit" id="go">Generate deck</button>
+  <p class="muted" style="margin-top:10px">Generating a deck takes up to a minute. Stay on this page.</p>
+</form>
+
+<script>
+function sync() {
+  var ai = document.querySelector('input[name=mode]:checked').value === 'ai';
+  var src = document.querySelector('input[name=ai_source]:checked').value === 'source';
+  var needsFile = !ai || src;
+
+  document.getElementById('ai-block').style.display = ai ? '' : 'none';
+  document.getElementById('prompt-block').style.display = (ai && !src) ? '' : 'none';
+  document.getElementById('file-block').style.display = needsFile ? '' : 'none';
+  document.getElementById('upload_file').required = needsFile;
+  document.getElementById('prompt').required = ai && !src;
+
+  document.getElementById('file-label').textContent = ai ? 'Source file' : 'Finished file to submit';
+  document.getElementById('file-hint').textContent = ai
+    ? 'PDF, DOCX, PPTX, TXT, MD, or CSV.'
+    : 'Whatever the assignment asks for. This gets submitted as is.';
+  document.getElementById('go').textContent = ai ? 'Generate deck' : 'Queue for submit';
+}
+sync();
+</script>
+{% endblock %}

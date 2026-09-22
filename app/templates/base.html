@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{% block title %}Canvas Assistant{% endblock %}</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #14161a; --muted: #616a76;
+    --line: #dfe3e8; --accent: #2f6df6; --good: #147a45; --bad: #b3261e;
+    --warn: #8a5a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101215; --card: #191c21; --ink: #e9ecf1; --muted: #98a2b0;
+      --line: #2a2f37; --accent: #6f9bff; --good: #4ec98a; --bad: #ff8b82;
+      --warn: #e0b054;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px 16px 64px; }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--card);
+    border-bottom: 1px solid var(--line);
+  }
+  nav { max-width: 720px; margin: 0 auto; padding: 10px 16px; display: flex;
+        gap: 6px; align-items: center; flex-wrap: wrap; }
+  nav a {
+    color: var(--ink); text-decoration: none; padding: 7px 11px;
+    border-radius: 8px; font-size: 15px;
+  }
+  nav a.on { background: var(--accent); color: #fff; }
+  nav .spacer { flex: 1; }
+  nav form { margin: 0; }
+  h1 { font-size: 22px; margin: 18px 0 4px; }
+  h2 { font-size: 17px; margin: 24px 0 8px; }
+  p.sub { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; margin-bottom: 12px;
+  }
+  .row { display: flex; justify-content: space-between; gap: 12px;
+         align-items: baseline; padding: 9px 0; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row .name { flex: 1; min-width: 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .pill {
+    font-size: 12px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line); white-space: nowrap; color: var(--muted);
+  }
+  .pill.good { color: var(--good); border-color: var(--good); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
+  input[type=text], input[type=password], input[type=file], select, textarea {
+    width: 100%; padding: 11px; font-size: 16px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  textarea { min-height: 150px; resize: vertical; font-family: inherit; }
+  button {
+    width: 100%; padding: 13px; font-size: 16px; font-weight: 600;
+    border: 0; border-radius: 9px; background: var(--accent); color: #fff;
+    margin-top: 16px; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--ink);
+                 border: 1px solid var(--line); }
+  button.danger { background: var(--bad); }
+  button.small { width: auto; padding: 8px 14px; font-size: 14px; margin: 0; }
+  .toggle { display: flex; gap: 8px; margin: 4px 0 8px; }
+  .toggle label {
+    flex: 1; margin: 0; text-align: center; padding: 12px 8px;
+    border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+    background: var(--card); font-weight: 600; font-size: 15px;
+  }
+  .toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .toggle input:checked + span { color: var(--accent); }
+  .toggle label:has(input:checked) { border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent); }
+  .banner { padding: 12px; border-radius: 10px; margin-bottom: 14px;
+            font-size: 15px; border: 1px solid; }
+  .banner.ok { color: var(--good); border-color: var(--good); }
+  .banner.err { color: var(--bad); border-color: var(--bad); }
+  .banner.warn { color: var(--warn); border-color: var(--warn); }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .actions form { flex: 1; margin: 0; }
+  .actions button { margin: 0; }
+  ul.log { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+  ul.log li { padding: 7px 0; border-top: 1px solid var(--line); }
+  ul.log li:first-child { border-top: 0; }
+  ul.log .err { color: var(--bad); }
+  code { font-size: 13px; word-break: break-all; }
+</style>
+</head>
+<body>
+{% if show_nav is not defined or show_nav %}
+<header><nav>
+  <a href="/" class="{{ 'on' if active == 'home' }}">Dashboard</a>
+  <a href="/upload" class="{{ 'on' if active == 'upload' }}">Upload</a>
+  <a href="/review" class="{{ 'on' if active == 'review' }}">Review</a>
+  <span class="spacer"></span>
+  <form method="post" action="/logout"><button class="ghost small">Log out</button></form>
+</nav></header>
+{% endif %}
+<div class="wrap">{% block body %}{% endblock %}</div>
+</body>
+</html>

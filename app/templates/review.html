@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set active = 'review' %}
+{% block title %}Review{% endblock %}
+{% block body %}
+<h1>Review</h1>
+<p class="sub">Nothing here is submitted. Approve to put it in the queue, reject to delete it.</p>
+
+{% for u in uploads %}
+  <div class="card">
+    <strong>{{ u.assignment_name }}</strong><br>
+    <span class="muted">
+      {% if u.course_name %}{{ u.course_name }} · {% endif %}Built {{ u.created_at }}
+    </span>
+    <div class="actions">
+      <a href="/review/{{ u.id }}/file" style="flex:1">
+        <button type="button" class="ghost">Download .pptx</button>
+      </a>
+    </div>
+    <div class="actions">
+      <form method="post" action="/review/{{ u.id }}/approve">
+        <button>Approve</button>
+      </form>
+      <form method="post" action="/review/{{ u.id }}/reject"
+            onsubmit="return confirm('Delete this deck? This cannot be undone.')">
+        <button class="danger">Reject</button>
+      </form>
+    </div>
+    <p class="muted" style="margin:10px 0 0">
+      Approving submits it within {{ poll_minutes }} minutes.
+    </p>
+  </div>
+{% else %}
+  <div class="card"><p class="muted">Nothing waiting for review.</p></div>
+{% endfor %}
+{% endblock %}

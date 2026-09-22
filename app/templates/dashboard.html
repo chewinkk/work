@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% set active = 'home' %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+<h1>Dashboard</h1>
+<p class="sub">Checking Canvas every {{ poll_minutes }} minutes.</p>
+
+{% if missing %}
+<div class="banner warn">
+  The watcher is off until these are set on Railway:
+  <code>{{ missing | join(', ') }}</code>
+</div>
+{% endif %}
+{% if error %}<div class="banner err">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <div class="row">
+    <span class="name">Waiting for your review</span>
+    <a href="/review"><span class="pill {{ 'warn' if awaiting }}">{{ awaiting }}</span></a>
+  </div>
+  <div class="row">
+    <span class="name">Queued to submit</span>
+    <span class="pill">{{ queued }}</span>
+  </div>
+  <form method="post" action="/poll">
+    <button class="ghost">Check Canvas now</button>
+  </form>
+</div>
+
+{% for course, assignments in courses %}
+  <h2>{{ course.name }}</h2>
+  <div class="card">
+    {% for a in assignments %}
+      <div class="row">
+        <span class="name">
+          {{ a.name }}<br>
+          <span class="muted">Due {{ a.due_at | due }}</span>
+        </span>
+        {% set status = status_of(a) %}
+        <span class="pill {{ 'good' if status.startswith('Graded') or status == 'Submitted' }}">{{ status }}</span>
+      </div>
+    {% else %}
+      <p class="muted">No assignments.</p>
+    {% endfor %}
+  </div>
+{% else %}
+  {% if not error %}<p class="muted">No active courses came back from Canvas.</p>{% endif %}
+{% endfor %}
+
+<h2>Recent activity</h2>
+<div class="card">
+  <ul class="log">
+    {% for entry in activity %}
+      <li class="{{ 'err' if entry.level == 'error' }}">
+        <strong>{{ entry.event }}</strong> {{ entry.detail }}<br>
+        <span class="muted">{{ entry.ts }}</span>
+      </li>
+    {% else %}
+      <li class="muted">Nothing logged yet.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}
