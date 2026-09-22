@@ -124,6 +124,37 @@ The first check runs quietly. The app records everything already in Canvas witho
 
 ---
 
+## Checking your setup before you trust it
+
+`check_setup.py` verifies your tokens, your Canvas address, your courses, and your
+notifications. It runs on your own machine. Your tokens go only to Canvas, ntfy, and
+Anthropic, never anywhere else.
+
+```bash
+python3 check_setup.py
+```
+
+It reads `.env` if you have one, or the variables already in your shell. Every check
+prints ok, warn, or FAIL, and each FAIL says what to fix.
+
+To share the output with someone helping you, mask your course and account names:
+
+```bash
+python3 check_setup.py --redact
+```
+
+Everything above is read-only. To also test a real submission:
+
+```bash
+python3 check_setup.py --submit 101:555
+```
+
+That uploads a small text file to the assignment you name. It asks you to type the
+assignment name first. Canvas cannot delete a submission once made and your instructor
+sees the attempt, so pick an assignment where an extra attempt does not matter.
+
+---
+
 ## Using it day to day
 
 ### Dashboard
