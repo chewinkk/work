@@ -101,6 +101,7 @@ These are your settings and secrets. Railway keeps them out of your code.
 | `ANTHROPIC_API_KEY` | Your key from [console.anthropic.com](https://console.anthropic.com), under API Keys. Starts with `sk-ant-`. |
 | `DATA_DIR` | `/data` |
 | `POLL_MINUTES` | `30` |
+| `TIMEZONE` | Your timezone, like `America/New_York`. Canvas sends due dates in UTC, so without this an 11:59 PM deadline shows as 3:59 AM the next day. |
 
 `.env.example` in this repository lists the same variables with notes. Two optional ones:
 

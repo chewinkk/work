@@ -4,28 +4,43 @@ Every Canvas call sits in its own try/except. One broken course, one deleted
 assignment, or one rejected upload must never stop the rest of the sweep.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app import canvas, db
-from app.config import MAX_SUBMIT_ATTEMPTS, POLL_MINUTES
+from app.config import MAX_SUBMIT_ATTEMPTS, POLL_MINUTES, TIMEZONE
 from app.notify import notify
 
 logger = logging.getLogger(__name__)
 
 _scheduler = None
 
+try:
+    LOCAL_TZ = ZoneInfo(TIMEZONE)
+except (ZoneInfoNotFoundError, ValueError):
+    logger.warning("unknown TIMEZONE %r, falling back to UTC", TIMEZONE)
+    LOCAL_TZ = timezone.utc
+
 
 def _format_due(due_at):
-    """'2026-09-30T23:59:00Z' -> 'Tue 30 Sep, 11:59 PM'."""
+    """Render a Canvas UTC timestamp in local time.
+
+    '2026-10-02T03:59:00Z' -> 'Thu 1 Oct, 11:59 PM EDT' in America/New_York.
+    Canvas always sends UTC, so skipping the conversion shifts a late-night
+    deadline onto the following day.
+    """
     if not due_at:
         return "no due date"
     try:
         stamp = datetime.fromisoformat(due_at.replace("Z", "+00:00"))
-        return stamp.strftime("%a %d %b, %I:%M %p").replace(" 0", " ")
-    except ValueError:
+    except (ValueError, AttributeError):
         return due_at
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    local = stamp.astimezone(LOCAL_TZ)
+    return local.strftime("%a %d %b, %I:%M %p %Z").replace(" 0", " ")
 
 
 # --- assignments and grades ------------------------------------------------

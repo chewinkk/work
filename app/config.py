@@ -19,6 +19,10 @@ ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
 
 POLL_MINUTES = int(os.environ.get("POLL_MINUTES", "30"))
 
+# Canvas returns every due date in UTC. Without this, a deadline of 11:59 PM
+# shows up as 3:59 AM the following day, which is the wrong day.
+TIMEZONE = os.environ.get("TIMEZONE", "America/New_York")
+
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 DB_PATH = os.path.join(DATA_DIR, "canvas.db")
