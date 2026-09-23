@@ -425,8 +425,32 @@ async def _assignment_specs(assignment):
         return []
 
 
+async def _requirements(assignment_id, context):
+    """What the assignment states the deliverable must be.
+
+    Cached against a hash of the brief, rubric and spec text, so this costs one
+    Claude call per assignment rather than one per page load, and re-parses by
+    itself if the instructor edits the assignment. Returns None when the parse
+    is unavailable, and the caller falls back to the keyword guess.
+    """
+    digest = assistant.context_hash(context)
+    cached = db.get_requirements(assignment_id, digest)
+    if cached is not None:
+        return cached
+    try:
+        found = await assistant.detect_requirements(context)
+    except Exception as exc:
+        logger.warning("requirement parse failed for %s: %s", assignment_id, exc)
+        db.log("requirements_failed", f"assignment {assignment_id}: {exc}", level="error")
+        return None
+    db.save_requirements(assignment_id, digest, found)
+    db.log("requirements_parsed",
+           f"assignment {assignment_id}: {found.get('file_format')}")
+    return found
+
+
 async def _chat_context(course_id, assignment_id):
-    """(course, assignment, specs, context) for one assignment."""
+    """(course, assignment, specs, context, requirements) for one assignment."""
     assignment = await canvas.get_assignment(course_id, assignment_id)
     try:
         course = await canvas.get_course(course_id)
@@ -437,11 +461,18 @@ async def _chat_context(course_id, assignment_id):
     context = assistant.build_context(
         course, assignment, specs, due_text=scheduler._format_due(assignment.get("due_at"))
     )
-    return course, assignment, specs, context
+    requirements = await _requirements(assignment_id, context)
+    return course, assignment, specs, context, requirements
 
 
 def _chat_page(request, course, assignment, specs, course_id, assignment_id,
-               error=None, message=None, status=200):
+               requirements=None, error=None, message=None, status=200):
+    chosen = assistant.resolved_format(requirements, assignment)
+    detected_extension = (requirements or {}).get("custom_extension") or ""
+    # "Custom file type" tells the student nothing. Name the actual extension.
+    label = render.LABELS.get(chosen, chosen)
+    if chosen == "other" and detected_extension:
+        label = f".{detected_extension} file"
     return TEMPLATES.TemplateResponse(request, "chat.html", {
         "course": course,
         "assignment": assignment,
@@ -449,7 +480,17 @@ def _chat_page(request, course, assignment, specs, course_id, assignment_id,
         "course_id": course_id,
         "assignment_id": assignment_id,
         "messages": db.get_chat_history(assignment_id),
-        "default_format": assistant.default_format(assignment),
+        "requirements": requirements,
+        "requirement_lines": assistant.requirements_summary(requirements),
+        "default_format": chosen,
+        "default_label": label,
+        "detected_extension": detected_extension,
+        "format_from_rubric": bool(
+            requirements and requirements.get("file_format") not in (None, "unspecified")
+        ),
+        "formats": [(k, render.LABELS[k]) for k in
+                    ("docx", "pptx", "pdf", "xlsx", "csv", "html", "md", "txt")],
+        "fully_accessible": render.FULLY_ACCESSIBLE,
         "error": error,
         "message": message,
         "poll_minutes": POLL_MINUTES,
@@ -484,22 +525,25 @@ async def chat_index(request: Request, _=Depends(require_login)):
 async def chat_thread(request: Request, course_id: str, assignment_id: str,
                       _=Depends(require_login)):
     try:
-        course, assignment, specs, _context = await _chat_context(course_id, assignment_id)
+        course, assignment, specs, _ctx, requirements = await _chat_context(
+            course_id, assignment_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Could not load that assignment: {exc}")
-    return _chat_page(request, course, assignment, specs, course_id, assignment_id)
+    return _chat_page(request, course, assignment, specs, course_id, assignment_id,
+                      requirements)
 
 
 @app.post("/chat/{course_id}/{assignment_id}", response_class=HTMLResponse)
 async def chat_send(request: Request, course_id: str, assignment_id: str,
                     _=Depends(require_login), message: str = Form("")):
     error = None
-    course = assignment = None
+    course = assignment = requirements = None
     specs = []
     try:
-        course, assignment, specs, context = await _chat_context(course_id, assignment_id)
+        course, assignment, specs, context, requirements = await _chat_context(
+            course_id, assignment_id)
         history = db.get_chat_history(assignment_id)
-        answer = await assistant.reply(context, history, message)
+        answer = await assistant.reply(context, history, message, requirements)
         db.add_chat_message(course_id, assignment_id, "user", message.strip())
         db.add_chat_message(course_id, assignment_id, "assistant", answer)
     except Exception as exc:
@@ -508,28 +552,38 @@ async def chat_send(request: Request, course_id: str, assignment_id: str,
         if assignment is None:
             raise HTTPException(status_code=404, detail=error)
     return _chat_page(request, course, assignment, specs, course_id, assignment_id,
-                      error=error, status=400 if error else 200)
+                      requirements, error=error, status=400 if error else 200)
 
 
 @app.post("/chat/{course_id}/{assignment_id}/save", response_class=HTMLResponse)
 async def chat_save(request: Request, course_id: str, assignment_id: str,
                     _=Depends(require_login), kind: str = Form("auto"),
-                    instruction: str = Form("")):
-    """Render the thread into an accessible file and send it for review."""
+                    custom_extension: str = Form(""), instruction: str = Form("")):
+    """Render the thread into the file the assignment asks for."""
     error = None
     message = None
-    course = assignment = None
+    course = assignment = requirements = None
     specs = []
     try:
-        course, assignment, specs, context = await _chat_context(course_id, assignment_id)
-        chosen = assistant.default_format(assignment) if kind == "auto" else kind
+        course, assignment, specs, context, requirements = await _chat_context(
+            course_id, assignment_id)
+
+        extension = re.sub(r"[^A-Za-z0-9]", "", custom_extension)[:10].lower()
+        if kind == "auto":
+            chosen = assistant.resolved_format(requirements, assignment)
+            extension = extension or (requirements or {}).get("custom_extension", "")
+        else:
+            chosen = kind
         if chosen not in render.RENDERERS:
-            raise ValueError("Pick Word or PowerPoint.")
+            raise ValueError("That is not a format the app can write.")
+        if chosen == "other" and not extension:
+            raise ValueError("Type the file extension you need, such as py or rtf.")
 
         assignment_name = assignment.get("name") or "Assignment"
         path, filename = await assistant.build_artifact(
             context, db.get_chat_history(assignment_id), chosen,
             assignment_name, UPLOAD_DIR, instruction,
+            extension=extension, requirements=requirements,
         )
         db.add_pending_upload(
             course_id, assignment_id, assignment_name, path, filename,
@@ -537,8 +591,10 @@ async def chat_save(request: Request, course_id: str, assignment_id: str,
             ai_generated=True, hold_for_review=True,
         )
         db.log("generated", f"{assignment_name}: {filename} awaiting review")
-        label = "PowerPoint deck" if chosen == "pptx" else "Word document"
-        message = (f"Built the {label}. Nothing is submitted yet. "
+        label = render.LABELS.get(chosen, chosen)
+        if chosen == "other":
+            label = f".{extension} file"
+        message = (f"Built the {label} as {filename}. Nothing is submitted yet. "
                    "Open Review to check it and approve.")
     except Exception as exc:
         error = str(exc)
@@ -546,7 +602,8 @@ async def chat_save(request: Request, course_id: str, assignment_id: str,
         if assignment is None:
             raise HTTPException(status_code=404, detail=error)
     return _chat_page(request, course, assignment, specs, course_id, assignment_id,
-                      error=error, message=message, status=400 if error else 200)
+                      requirements, error=error, message=message,
+                      status=400 if error else 200)
 
 
 @app.post("/chat/{course_id}/{assignment_id}/clear")

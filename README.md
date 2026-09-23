@@ -186,12 +186,22 @@ This is the conversation. Pick an assignment and Claude starts already knowing:
 
 Talk to it like you would in any chat. Ask what a rubric criterion is actually asking for, have it draft a section, or paste your own writing and ask where it loses points. The conversation is saved per assignment, so you can close the page and pick it up later.
 
-When the work is ready, "Build it and send for review" turns the conversation into a file and puts it in the Review queue. Format is chosen for you from the assignment, and you can override it:
+Before you type anything, Claude reads the brief, every rubric criterion, and the attached spec files looking for what the assignment actually requires: the file type, a word count, a slide count, a citation style. The page shows what it found, with a direct quote from the source so you can check it. If the assignment never states a file type, it says so rather than inventing one.
 
-- Presentations become an accessible PowerPoint. Every slide has a real title, body text sits in proper placeholders so reading order works, and speaker notes are kept.
-- Everything else becomes an accessible Word document. Real heading styles, real list styles, and the document language set.
+That matters because the title lies. An assignment called "Marketing Mix Presentation" whose rubric says "export your slides and submit as a PDF" needs a PDF, and guessing from the title would hand in the wrong thing.
 
-Accessible here means a screen reader can navigate it. Text that is merely bold and large looks like a heading but carries no structure, so nothing in these files fakes formatting that way.
+When the work is ready, "Build it and send for review" turns the conversation into that file and puts it in the Review queue. The format the rubric asked for is preselected, and you can override it. Available formats:
+
+| Format | Notes |
+|---|---|
+| Word `.docx` | Real heading and list styles, document language set |
+| PowerPoint `.pptx` | Every slide titled, text in proper placeholders, speaker notes kept |
+| PDF | Navigable heading outline and declared language |
+| Excel `.xlsx` | Header row marked as a real table and frozen |
+| CSV, Markdown, plain text, HTML | Written directly |
+| Anything else | Type the extension, for a `.py`, `.rtf`, or whatever the assignment wants. The content goes in with nothing added around it. |
+
+Accessible means a screen reader can navigate it. Text that is merely bold and large looks like a heading but carries no structure, so nothing fakes formatting that way. Word, PowerPoint, and HTML carry full structure. PDF gets a navigation outline but is not a fully tagged PDF/UA file, so where an instructor accepts either, Word is the better choice. CSV and plain text cannot carry structure at all. The page tells you which you are picking.
 
 Generating takes up to a minute. Stay on the page.
 
@@ -263,7 +273,7 @@ If you think a secret leaked: delete the Canvas token in Canvas settings, roll y
 | `app/db.py` | SQLite storage on the volume |
 | `app/ai_generate.py` | Builds a deck from a source document |
 | `app/assistant.py` | The per-assignment chat, and turning it into a file |
-| `app/render.py` | Writes the accessible .docx and .pptx files |
+| `app/render.py` | Writes every output format |
 | `app/extract.py` | Reads text out of PDF, Word, PowerPoint, and Canvas HTML |
 | `app/notify.py` | Sends the pushes to ntfy |
 | `Procfile` | Tells Railway how to start the app |

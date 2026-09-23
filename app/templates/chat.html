@@ -25,6 +25,32 @@
   {% endif %}
 </div>
 
+<div class="card">
+  <strong style="font-size:14px">What the assignment asks for</strong>
+  {% if requirement_lines %}
+    <ul class="log" style="margin-top:8px">
+      {% for line in requirement_lines %}<li>{{ line }}</li>{% endfor %}
+    </ul>
+    {% if not format_from_rubric %}
+      <p class="muted" style="margin:8px 0 0">
+        No file type stated anywhere in the brief, the rubric, or the attached
+        files. Defaulting to {{ default_label }}. Check the assignment page
+        yourself if you are unsure.
+      </p>
+    {% endif %}
+  {% elif requirements %}
+    <p class="muted" style="margin:8px 0 0">
+      The assignment states no file type, length, or citation style.
+      Defaulting to {{ default_label }}.
+    </p>
+  {% else %}
+    <p class="muted" style="margin:8px 0 0">
+      Could not read the requirements. Defaulting to {{ default_label }} from
+      the assignment title. Check the assignment page yourself.
+    </p>
+  {% endif %}
+</div>
+
 {% if message %}<div class="banner ok">{{ message }}</div>{% endif %}
 {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
 
@@ -58,16 +84,53 @@
     queue. Nothing submits until you approve it there.
   </p>
   <label for="kind">Format</label>
-  <select id="kind" name="kind">
-    <option value="auto" selected>Auto ({{ 'PowerPoint' if default_format == 'pptx' else 'Word' }}, from the assignment)</option>
-    <option value="docx">Word document (.docx)</option>
-    <option value="pptx">PowerPoint deck (.pptx)</option>
+  <select id="kind" name="kind" onchange="toggleExt()">
+    <option value="auto" selected>
+      {{ default_label }}{{ ' (from the rubric)' if format_from_rubric else ' (best guess)' }}
+    </option>
+    {% for value, label in formats %}
+      <option value="{{ value }}">{{ label }} ({{ value }})</option>
+    {% endfor %}
+    <option value="other">Something else, I will type the extension</option>
   </select>
+
+  <div id="ext-block" style="display:none">
+    <label for="custom_extension">File extension</label>
+    <input type="text" id="custom_extension" name="custom_extension"
+           value="{{ detected_extension }}" placeholder="py, rtf, odt" maxlength="10">
+    <p class="muted" style="margin:6px 0 0">
+      The text goes in as written, with nothing added around it.
+    </p>
+  </div>
+
+  <p class="muted" id="a11y-note" style="margin:10px 0 0"></p>
   <label for="instruction">Anything to change first (optional)</label>
   <input type="text" id="instruction" name="instruction"
          placeholder="Use the second draft, drop the conclusion">
   <button type="submit">Build it and send for review</button>
 </form>
+
+<script>
+  var FULL = {{ fully_accessible | list | tojson }};
+  var AUTO = {{ default_format | tojson }};
+  var AUTO_EXT = {{ detected_extension | tojson }};
+  function toggleExt() {
+    var v = document.getElementById('kind').value;
+    var needsExt = v === 'other' || (v === 'auto' && AUTO === 'other');
+    document.getElementById('ext-block').style.display = needsExt ? '' : 'none';
+    document.getElementById('custom_extension').required = needsExt && !AUTO_EXT;
+    var effective = v === 'auto' ? AUTO : v;
+    var note = document.getElementById('a11y-note');
+    if (FULL.indexOf(effective) !== -1) {
+      note.textContent = 'This format carries real structure a screen reader can navigate.';
+    } else if (effective === 'pdf') {
+      note.textContent = 'PDF gets a navigable outline, but Word is more accessible where the instructor accepts either.';
+    } else {
+      note.textContent = 'This format cannot carry heading structure. Pick Word or PowerPoint if the assignment allows it.';
+    }
+  }
+  toggleExt();
+</script>
 
 <form method="post" action="/chat/{{ course_id }}/{{ assignment_id }}/clear"
       onsubmit="return confirm('Delete this whole conversation? This cannot be undone.')">

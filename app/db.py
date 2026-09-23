@@ -6,6 +6,7 @@ buys nothing. WAL mode keeps the scheduler writing while a page reads.
 All Canvas ids are stored as TEXT. Canvas returns them as ints in JSON and as
 strings in form posts, so normalising on the way in avoids lookups that miss.
 """
+import json
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -60,6 +61,13 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     assignment_id TEXT NOT NULL,
     role          TEXT NOT NULL,
     content       TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS assignment_requirements (
+    assignment_id TEXT PRIMARY KEY,
+    context_hash  TEXT NOT NULL,
+    payload       TEXT NOT NULL,
     created_at    TEXT NOT NULL
 );
 
@@ -323,3 +331,39 @@ def get_active_chats():
             " ORDER BY last_at DESC"
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+# --- parsed assignment requirements ----------------------------------------
+
+def get_requirements(assignment_id, context_hash):
+    """Cached parse of one assignment, or None if absent or stale.
+
+    Keyed on a hash of the brief, rubric and spec text, so an edited
+    assignment re-parses instead of serving a stale answer.
+    """
+    with _tx() as conn:
+        row = conn.execute(
+            "SELECT payload FROM assignment_requirements"
+            " WHERE assignment_id = ? AND context_hash = ?",
+            (str(assignment_id), context_hash),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["payload"])
+    except (ValueError, TypeError):
+        return None
+
+
+def save_requirements(assignment_id, context_hash, payload):
+    with _tx() as conn:
+        conn.execute(
+            "INSERT INTO assignment_requirements"
+            " (assignment_id, context_hash, payload, created_at)"
+            " VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(assignment_id) DO UPDATE SET"
+            "   context_hash = excluded.context_hash,"
+            "   payload = excluded.payload,"
+            "   created_at = excluded.created_at",
+            (str(assignment_id), context_hash, json.dumps(payload), _now()),
+        )
